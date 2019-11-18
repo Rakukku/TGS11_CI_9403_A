@@ -6,13 +6,19 @@ Class User extends REST_Controller{
     public function __construct(){
         header('Access-Control-Allow-Origin: *');         
         header("Access-Control-Allow-Methods: GET, OPTIONS, POST, DELETE");         
-        header("Access-Control-Allow-Headers: Content-Type, ContentLength, Accept-Encoding");         
+        header("Access-Control-Allow-Headers: Authorization, Content-Type, ContentLength, Accept-Encoding");         
         parent::__construct();         
         $this->load->model('UserModel');         
-        $this->load->library('form_validation');     
+        $this->load->library('form_validation');   
+        $this->load->helper(['jwt','authorization']);     
     }     
     
-    public function index_get(){         
+    public function index_get(){      
+        $data = $this->verify_request();
+        $status = parent::HTTP_OK;
+        if($data['status'] == 401){
+            return $this->returnData($data['msg'],true);
+        }  
         return $this->returnData($this->db->get('users')->result(), false);     
     }     
     
@@ -44,12 +50,13 @@ Class User extends REST_Controller{
         
         $validation->set_rules($rule);         
         if (!$validation->run()) {             
-            return $this->returnData($this->form_validation>error_array(), true);         
+            return $this->returnData($this->form_validation->error_array(), true);         
         }         
         
         $user = new UserData();         
         $user->name = $this->post('name');         
-        $user->password = $this->post('password');         
+        $user->password = $this->post('password');  
+        
         $user->email = $this->post('email');         
         if($id == null){             
             $response = $this->UserModel->store($user); 
@@ -74,6 +81,45 @@ Class User extends REST_Controller{
         $response['message']=$msg;         
         return $this->response($response);     
     } 
+
+    private function verify_request()
+    {
+        // Get all the headers
+        $headers = $this->input->request_headers();
+        // Extract the token
+        if(isset($headers['Authorization'])){
+            $header =  $headers['Authorization'];
+        }else
+        {
+            $status = parent::HTTP_UNAUTHORIZED;
+            $response = ['status' => $status, 'msg' => 'Unauthorized Access!'];
+            return $response;
+        }
+        
+        $token = explode(" ", $header)[1];
+        // Use try-catch
+        // JWT library throws exception if the token is not valid
+        try {
+            // Validate the token
+            // Successfull validation will return the decoded user data else returns false
+            $data = AUTHORIZATION::validateToken($token);
+
+            if ($data === false) {
+                $status = parent::HTTP_UNAUTHORIZED;
+                $response = ['status' => $status, 'msg' => 'Unauthorized Access!'];
+            } else {
+                $response = ['status' => 200, 'msg' => $data];
+            }
+            return $response;
+        } catch (Exception $e) {
+            // Token is invalid
+            // Send the unathorized access message
+            $status = parent::HTTP_UNAUTHORIZED;
+            $response = ['status' => $status, 'msg' => 'Unauthorized Access! '];
+            //$this->response($response, $status);
+            return $response;
+        }
+    }
 } 
 
 Class UserData{     
